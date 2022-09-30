@@ -3,6 +3,61 @@
 #include "kernel/param.h"
 
 // ulib.c 的 get 改造而来
+char *ugets(char *buf, int max);
+
+// sh.c 的 getcmd 改造而来
+int ugetcmd(char *buf, int nbuf);
+
+// 向字符指针数组后面添加一个指针
+void append1(int *argc, char *argv[], char *token);
+
+int main(int argc, char *argv[])
+{
+    /*
+    argv[0] = "xargs"
+    argv[1] = command
+    argv[2] = para
+    ...
+    argv[END] = 0
+    */
+
+    char *argv_alter[MAXARG];
+    int argc_alter = argc - 1;
+
+    for (int i = 0; i < argc_alter; i++)
+        argv_alter[i] = argv[i + 1];
+
+    // buf 是从标准输入读数据的缓冲区
+    char buf[100];
+    // token 是实际存这些输入的空间
+    char token[MAXARG][100];
+
+    int len = 0; // token 长度
+    while (ugetcmd(buf, sizeof(buf)) >= 0)
+        strcpy(token[len++], buf); // buf 一直在变，不能添加到字符串指针数组里
+
+    for (int i = 0; i < len; i++)
+    {
+        if (fork() == 0)
+        {
+            // -n 1
+            append1(&argc_alter, argv_alter, token[i]);
+            // exec 执行
+            exec(argv_alter[0], argv_alter);
+            // 失败了就退出了
+            printf("exec failed!\n");
+            exit(1);
+        }
+        else
+        {
+            wait(0);
+        }
+    }
+
+    exit(0);
+}
+
+// ulib.c 的 gets 改造而来
 char *ugets(char *buf, int max)
 {
     int i, cc;
@@ -33,51 +88,10 @@ int ugetcmd(char *buf, int nbuf)
     return 0;
 }
 
-int main(int argc, char *argv[])
+// 向字符指针数组后面添加一个指针
+void append1(int *argc, char *argv[], char *token)
 {
-    /*
-    argv[0] = "xargs"
-    argv[1] = command
-    argv[2] = para
-    ...
-    argv[END] = 0
-    */
-
-    if (fork() == 0)
-    {
-        // 还是在子进程里 exec 吧
-        /*
-        获得新参数列表
-        之后就使用 exec(argv_alter[0], argv_alter);
-        */
-        char *argv_alter[MAXARG];
-        int argc_alter = argc - 1;
-
-        for (int i = 0; i < argc_alter; i++)
-            argv_alter[i] = argv[i + 1];
-
-        char buf[100];
-
-        while (ugetcmd(buf, sizeof(buf)) >= 0)
-        {
-            // buf 一直在变，不能添加到字符串指针数组里
-            // 故使用临时的 temp
-            char temp[100];
-            strcpy(temp, buf);
-            argv_alter[argc_alter] = temp;
-            argc_alter++;
-        }
-        argv_alter[argc_alter] = 0;
-
-        // exec 执行
-        exec(argv_alter[0], argv_alter);
-        // 失败了就退出了
-        printf("exec failed!\n");
-        exit(1);
-    }
-    else
-    {
-        wait(0);
-    }
-    exit(0);
+    argv[*argc] = token;
+    (*argc)++;
+    argv[*argc] = 0;
 }
