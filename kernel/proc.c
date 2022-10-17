@@ -140,17 +140,20 @@ found:
 uint64
 nproc(void)
 {
-  uint64 i = 0;
+  uint64 n = 0;
 
   struct proc *p;
 
   for (p = proc; p < &proc[NPROC]; p++)
   {
+    // MIT 版本
     if (p->state != UNUSED)
-      i++;
+      n++;
+    // // HITSZ 版本
+    // if (p->state == UNUSED) n++;
   }
 
-  return i;
+  return n;
 }
 
 // free a proc structure and the data hanging from it,
@@ -427,7 +430,7 @@ uint64
 freefd(void)
 {
 
-  uint64 i = 0;
+  uint64 free = 0;
 
   struct proc *p = myproc();
 
@@ -438,10 +441,10 @@ freefd(void)
       continue;
 
     // 如果该下标没有对应 file 指针，那就是可用的
-    i++;
+    free++;
   }
 
-  return (uint64)(NOFILE - i);
+  return free;
 }
 
 // Wait for a child process to exit and return its pid.

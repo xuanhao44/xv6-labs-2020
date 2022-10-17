@@ -141,9 +141,9 @@ sys_sysinfo(void)
     return -1;
 
   struct sysinfo info;
-  info.freemem = freemem();
-  info.nproc = nproc();
-  info.freefd = freefd();
+  info.freemem = freemem(); // kernel/kalloc.c
+  info.nproc = nproc();     // kernel/proc.c
+  info.freefd = freefd();   // kernel/proc.c
 
   // 需要 copyout
   struct proc *p = myproc();
