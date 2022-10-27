@@ -67,7 +67,7 @@ bget(uint dev, uint blockno)
 
   // Is the block already cached?
   // from bcache.head.next to bcache.head
-  for (b = bcache.head.next; b != &bcache.head; b = b->next)
+  for (b = (bcache.head).next; b != &bcache.head; b = b->next)
   {
     // pair
     if (b->dev == dev && b->blockno == blockno)
@@ -82,7 +82,7 @@ bget(uint dev, uint blockno)
   // Not cached.
   // **Recycle** the least recently used (LRU) unused buffer.
   // diff from the former
-  for (b = bcache.head.prev; b != &bcache.head; b = b->prev)
+  for (b = (bcache.head).prev; b != &bcache.head; b = b->prev)
   {
     // refcnt == 0 means unused
     if (b->refcnt == 0)
