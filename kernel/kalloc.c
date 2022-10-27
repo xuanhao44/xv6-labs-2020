@@ -26,15 +26,15 @@ struct kmem
 } kmems[NCPU];
 // NCPU: from kernel/param.h; 8 - maximum number of CPUs
 
-static char* kmemsIDs[] = {
-  [0] "kmems0",
-  [1] "kmems1",
-  [2] "kmems2",
-  [3] "kmems3",
-  [4] "kmems4",
-  [5] "kmems5",
-  [6] "kmems6",
-  [7] "kmems7",
+static char *kmemsIDs[] = {
+    [0] "kmems0",
+    [1] "kmems1",
+    [2] "kmems2",
+    [3] "kmems3",
+    [4] "kmems4",
+    [5] "kmems5",
+    [6] "kmems6",
+    [7] "kmems7",
 };
 
 void kinit()
@@ -85,8 +85,7 @@ void kfree(void *pa)
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
-void *
-kalloc(void)
+void *kalloc(void)
 {
   struct run *r;
 
@@ -108,7 +107,7 @@ kalloc(void)
     {
       if (i == id)
         continue;
-      
+
       acquire(&kmems[i].lock);
       {
         r = kmems[i].freelist;
@@ -116,9 +115,6 @@ kalloc(void)
           kmems[i].freelist = r->next;
       }
       release(&kmems[i].lock);
-
-      if (r)
-        break;
     }
   }
   pop_off();
