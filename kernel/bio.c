@@ -26,11 +26,6 @@ struct
 {
   struct spinlock lock;
   struct buf buf[NBUF];
-
-  // Linked list of all buffers, through prev/next.
-  // Sorted by how recently the buffer was used.
-  // head.next is most recent, head.prev is least.
-  struct buf head;
 } bcache;
 
 void binit(void)
@@ -38,20 +33,12 @@ void binit(void)
   struct buf *b;
 
   initlock(&bcache.lock, "bcache");
-
-  // Create linked list of buffers
-  // init
-  (bcache.head).prev = &bcache.head;
-  (bcache.head).next = &bcache.head;
-
   for (b = bcache.buf; b < bcache.buf + NBUF; b++)
   {
-    // add b between bcache.head and bcache.head.next
-    b->next = (bcache.head).next;
-    b->prev = &bcache.head;
-    initsleeplock(&b->lock, "buffer");
-    (bcache.head.next)->prev = b;
-    (bcache.head).next = b;
+    // 不能在自旋锁保护的临界区中使用睡眠锁，但是可以在睡眠锁保护的临界区中使用自旋锁。
+    // 总之就是 sleeplock 要在外面，或者没关系
+    initsleeplock(&b->sleeplock, "bcache.buffer.sleeplock");
+    initlock(&b->spinlock, "bcache.buffer.spinlock");
   }
 }
 
@@ -63,39 +50,98 @@ bget(uint dev, uint blockno)
 {
   struct buf *b;
 
-  acquire(&bcache.lock);
-
-  // Is the block already cached?
-  // from bcache.head.next to bcache.head
-  for (b = (bcache.head).next; b != &bcache.head; b = b->next)
+  // 第一次检测, 99% 会命中在第一次检测
+  // 但是没有大锁保护, 它可能会抢走别人的
+  for (b = bcache.buf; b < bcache.buf + NBUF; b++)
   {
-    // pair
+    // unsafe check
     if (b->dev == dev && b->blockno == blockno)
     {
-      b->refcnt++; // 该块被引用次数 ++
-      release(&bcache.lock);
-      acquiresleep(&b->lock);
-      return b;
+      // acquire lock
+      acquire(&b->spinlock);
+      // double check
+      if (b->dev == dev && b->blockno == blockno)
+      {
+        b->refcnt++; // 该块被引用次数 ++
+        release(&b->spinlock);
+        acquiresleep(&b->sleeplock);
+        return b;
+      }
+      else
+        release(&b->spinlock);
+    }
+  }
+
+  acquire(&bcache.lock);
+// 再次检测
+LOOP:
+  for (b = bcache.buf; b < bcache.buf + NBUF; b++)
+  {
+    // unsafe check
+    if (b->dev == dev && b->blockno == blockno)
+    {
+      // acquire lock
+      acquire(&b->spinlock);
+      // double check
+      if (b->dev == dev && b->blockno == blockno)
+      {
+        b->refcnt++; // 该块被引用次数 ++
+        release(&b->spinlock);
+        release(&bcache.lock);
+        acquiresleep(&b->sleeplock);
+        return b;
+      }
+      else
+        release(&b->spinlock);
     }
   }
 
   // Not cached.
   // **Recycle** the least recently used (LRU) unused buffer.
-  // diff from the former
-  for (b = (bcache.head).prev; b != &bcache.head; b = b->prev)
+  uint time_least = 0xffffffff;
+  struct buf *lrub = (void *)0;
+  for (b = bcache.buf; b < bcache.buf + NBUF; b++)
   {
     // refcnt == 0 means unused
-    if (b->refcnt == 0)
+    if (b->refcnt == 0 && b->timestamp < time_least)
     {
-      b->dev = dev;
-      b->blockno = blockno;
-      b->valid = 0; // set valid 0, wait for virtio_disk_rw()
-      b->refcnt = 1;
-      release(&bcache.lock);
-      acquiresleep(&b->lock);
-      return b;
+      acquire(&b->spinlock);
+      if (b->refcnt == 0 && b->timestamp < time_least)
+      {
+        time_least = b->timestamp;
+        lrub = b;
+      }
+      release(&b->spinlock);
     }
   }
+
+  if (lrub != (void *)0 && lrub->refcnt == 0)
+  {
+    acquire(&lrub->spinlock);
+    if (lrub != (void *)0 && lrub->refcnt == 0)
+    {
+      lrub->dev = dev;
+      lrub->blockno = blockno;
+      lrub->valid = 0; // set valid 0, wait for virtio_disk_rw()
+      lrub->refcnt = 1;
+      release(&lrub->spinlock);
+      release(&bcache.lock);
+      acquiresleep(&lrub->sleeplock);
+      return lrub;
+    }
+    else
+    {
+      release(&lrub->spinlock);
+      // release(&bcache.lock); no need
+      goto LOOP; // goto second check
+    }
+  }
+  else
+  {
+    // release(&bcache.lock); no need
+    goto LOOP; // goto second check
+  }
+
   panic("bget: no buffers");
 }
 
@@ -118,48 +164,40 @@ bread(uint dev, uint blockno)
 // Write b's contents to disk.  Must be locked.
 void bwrite(struct buf *b)
 {
-  if (!holdingsleep(&b->lock))
+  if (!holdingsleep(&b->sleeplock))
     panic("bwrite");
   virtio_disk_rw(b, 1);
 }
 
 // Release a locked buffer.
-// Move to the head of the most-recently-used list.
 void brelse(struct buf *b)
 {
-  if (!holdingsleep(&b->lock))
+  if (!holdingsleep(&b->sleeplock))
     panic("brelse");
 
-  releasesleep(&b->lock);
+  releasesleep(&b->sleeplock);
 
-  acquire(&bcache.lock);
+  acquire(&b->spinlock);
   b->refcnt--;
   if (b->refcnt == 0)
   {
-    // no one is waiting for it.
-    // remove b between b->next and b->prev
-    (b->next)->prev = b->prev;
-    (b->prev)->next = b->next;
-    // deal with b itself
-    // add b between bcache.head and bcache.head.next
-    b->next = (bcache.head).next;
-    b->prev = &bcache.head;
-    (bcache.head.next)->prev = b;
-    (bcache.head).next = b;
+    acquire(&tickslock);
+    b->timestamp = ticks;
+    release(&tickslock);
   }
-  release(&bcache.lock);
+  release(&b->spinlock);
 }
 
 void bpin(struct buf *b)
 {
-  acquire(&bcache.lock);
+  acquire(&b->spinlock);
   b->refcnt++;
-  release(&bcache.lock);
+  release(&b->spinlock);
 }
 
 void bunpin(struct buf *b)
 {
-  acquire(&bcache.lock);
+  acquire(&b->spinlock);
   b->refcnt--;
-  release(&bcache.lock);
+  release(&b->spinlock);
 }
