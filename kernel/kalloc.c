@@ -26,21 +26,10 @@ struct kmem
 } kmems[NCPU];
 // NCPU: from kernel/param.h; 8 - maximum number of CPUs
 
-static char *kmemsIDs[] = {
-    [0] "kmems0",
-    [1] "kmems1",
-    [2] "kmems2",
-    [3] "kmems3",
-    [4] "kmems4",
-    [5] "kmems5",
-    [6] "kmems6",
-    [7] "kmems7",
-};
-
 void kinit()
 {
   for (int i = 0; i < NCPU; i++)
-    initlock(&kmems[i].lock, kmemsIDs[i]);
+    initlock(&kmems[i].lock, "kmems");
 
   freerange(end, (void *)PHYSTOP);
 }

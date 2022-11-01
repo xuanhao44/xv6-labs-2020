@@ -175,8 +175,8 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-
-
+	$U/_kalloctest\
+	$U/_bcachetest\
 
 
 ifeq ($(LAB),$(filter $(LAB), pgtbl lock))
@@ -267,6 +267,8 @@ endif
 ifeq ($(LAB),fs)
 CPUS := 1
 endif
+
+CFLAGS += -DCPUS=${CPUS}
 
 FWDPORT = $(shell expr `id -u` % 5000 + 25999)
 
