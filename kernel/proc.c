@@ -31,6 +31,10 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
 
+      // 把 procinit() 中内核栈的物理地址 pa 拷贝到 PCB 新增的成员 kstack_pa 中,
+      // 同时还需要保留内核栈在全局页表 kernel_pagetable 的映射.
+      // 然后在 allocproc() 中再把它映射到进程的内核页表里.
+
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
@@ -40,6 +44,7 @@ procinit(void)
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
+      p->kstack_pa = (uint64)pa;
   }
   kvminithart();
 }
@@ -121,6 +126,17 @@ found:
     return 0;
   }
 
+  // A process kernel page table.
+  p->k_pagetable = ukvminit();
+  if (p->k_pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  // 把内核栈映射到进程的内核页表里.
+  ukvmmap(p->k_pagetable, p->kstack, p->kstack_pa, PGSIZE, PTE_R | PTE_W);
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -133,12 +149,39 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+// 需要释放对应的内核页表.
+// 你需要找到释放页表但不释放叶子页表指向的物理页帧的方法.
 static void
 freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+  // if(p->k_pagetable) {
+  //   uvmunmap(p->k_pagetable, p->kstack, 1, 1);
+  //   freewalk(p->k_pagetable);
+  // }
+  // p->kstack = 0;
+  // p->kstack_pa = 0;
+  // p->k_pagetable = 0;
+
+  // free the kernel stack in the RAM
+  if (p->kstack)
+    uvmunmap(p->k_pagetable, p->kstack, 1, 1);
+  // {
+  //   pte_t* pte = walk(p->k_pagetable, p->kstack, 0);
+  //   if (pte == 0)
+  //     panic("freeproc: walk");
+  //   kfree((void*)PTE2PA(*pte));
+  // }
+  p->kstack = 0;
+  p->kstack_pa = 0;
+
+  if (p->k_pagetable)
+    freewalk_kproc(p->k_pagetable);
+  p->k_pagetable = 0;
+  
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -150,6 +193,24 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+}
+
+// Recursively free page-table pages
+// but retain leaf physical addresses
+void
+freewalk_kproc(pagetable_t pagetable) {
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      pagetable[i] = 0;
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0)
+      {
+        uint64 child = PTE2PA(pte);
+        freewalk_kproc((pagetable_t)child);
+      }
+    }
+  }
+  kfree((void*)pagetable);
 }
 
 // Create a user page table for a given process,
@@ -473,11 +534,19 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        // 在进程切换的同时也要切换进程内核页表将其放入寄存器 satp 中
+        ukvminithart(p->k_pagetable);
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+
+        // 当目前没有进程运行的时候
+        // 应该要 satp 载入全局的内核页表 kernel_pagetable
+        kvminithart();
 
         found = 1;
       }

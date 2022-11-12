@@ -288,7 +288,7 @@ void freewalk(pagetable_t pagetable)
       // this PTE points to a lower-level page table.
       uint64 child = PTE2PA(pte);   // 将 PTE 转为为物理地址
       freewalk((pagetable_t)child); // 递归调用 freewalk
-      // pagetable[i] = 0;             // 清零
+      pagetable[i] = 0;             // 清零
     }
     else if (pte & PTE_V)
     {
@@ -496,3 +496,63 @@ void vmprint(pagetable_t pagetable)
   printf("page table %p\n", pagetable);
   _vmprint(pagetable, 1);
 }
+
+// Allocate per process kernel page table.
+// return this page table.
+pagetable_t ukvminit()
+{
+  // kernel_pagetable = (pagetable_t)kalloc();
+  // memset(kernel_pagetable, 0, PGSIZE);
+  pagetable_t k_pagetable = uvmcreate();
+  if (k_pagetable == 0) return 0;
+
+  // uart registers
+  ukvmmap(k_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  ukvmmap(k_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // 不要映射 CLINT, 否则会在任务三发生地址重合问题.
+  // CLINT
+  // ukvmmap(k_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+  // PLIC
+  ukvmmap(k_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  ukvmmap(k_pagetable, KERNBASE, KERNBASE, (uint64)etext - KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  ukvmmap(k_pagetable, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  ukvmmap(k_pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  return k_pagetable;
+}
+
+// Switch h/w page table register to the process kernel page table,
+// and enable paging.
+void
+ukvminithart(pagetable_t k_pagetable)
+{
+  w_satp(MAKE_SATP(k_pagetable));
+  sfence_vma();
+}
+
+// add a mapping to the per process kernel page table.
+// does not flush TLB or enable paging.
+void 
+ukvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
+    panic("ukvmmap");
+}
+
+// Free per process kernel pages.
+void ukvmfree(pagetable_t pagetable)
+{
+  freewalk(pagetable);
+}
+
