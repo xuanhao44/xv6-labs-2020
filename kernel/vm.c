@@ -556,15 +556,13 @@ void ukfreewalk(pagetable_t pagetable)
   for (int i = 0; i < 512; i++)
   {
     pte_t pte = pagetable[i];
-    if (pte & PTE_V)
+    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0)
     {
+      uint64 child = PTE2PA(pte);
+      ukfreewalk((pagetable_t)child);
       pagetable[i] = 0;
-      if ((pte & (PTE_R | PTE_W | PTE_X)) == 0)
-      {
-        uint64 child = PTE2PA(pte);
-        ukfreewalk((pagetable_t)child);
-      }
     }
+    // leaf: do nothing
   }
   kfree((void *)pagetable);
 }
