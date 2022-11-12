@@ -91,7 +91,6 @@ void            exit(int);
 int             fork(void);
 int             growproc(int);
 pagetable_t     proc_pagetable(struct proc *);
-void            freewalk_kproc(pagetable_t);
 void            proc_freepagetable(pagetable_t, uint64);
 int             kill(int);
 struct cpu*     mycpu(void);
@@ -160,7 +159,6 @@ int             uartgetc(void);
 
 // vm.c
 void            kvminit(void);
-pte_t*          walk(pagetable_t, uint64, int);
 void            kvminithart(void);
 uint64          kvmpa(uint64);
 void            kvmmap(uint64, uint64, uint64, int);
@@ -169,7 +167,6 @@ pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
-void            freewalk(pagetable_t);
 #ifdef SOL_COW
 #else
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
@@ -185,6 +182,7 @@ void            vmprint(pagetable_t);
 pagetable_t     ukvminit();
 void            ukvminithart(pagetable_t);
 void            ukvmmap(pagetable_t, uint64, uint64, uint64, int);
+void            ukfreewalk(pagetable_t);
 
 // plic.c
 void            plicinit(void);

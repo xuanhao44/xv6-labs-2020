@@ -504,7 +504,8 @@ pagetable_t ukvminit()
   // kernel_pagetable = (pagetable_t)kalloc();
   // memset(kernel_pagetable, 0, PGSIZE);
   pagetable_t k_pagetable = uvmcreate();
-  if (k_pagetable == 0) return 0;
+  if (k_pagetable == 0)
+    return 0;
 
   // uart registers
   ukvmmap(k_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
@@ -534,8 +535,7 @@ pagetable_t ukvminit()
 
 // Switch h/w page table register to the process kernel page table,
 // and enable paging.
-void
-ukvminithart(pagetable_t k_pagetable)
+void ukvminithart(pagetable_t k_pagetable)
 {
   w_satp(MAKE_SATP(k_pagetable));
   sfence_vma();
@@ -543,16 +543,28 @@ ukvminithart(pagetable_t k_pagetable)
 
 // add a mapping to the per process kernel page table.
 // does not flush TLB or enable paging.
-void 
-ukvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+void ukvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if(mappages(pagetable, va, sz, pa, perm) != 0)
+  if (mappages(pagetable, va, sz, pa, perm) != 0)
     panic("ukvmmap");
 }
 
-// Free per process kernel pages.
-void ukvmfree(pagetable_t pagetable)
+// Recursively free page-table pages
+// but retain leaf physical addresses
+void ukfreewalk(pagetable_t pagetable)
 {
-  freewalk(pagetable);
+  for (int i = 0; i < 512; i++)
+  {
+    pte_t pte = pagetable[i];
+    if (pte & PTE_V)
+    {
+      pagetable[i] = 0;
+      if ((pte & (PTE_R | PTE_W | PTE_X)) == 0)
+      {
+        uint64 child = PTE2PA(pte);
+        ukfreewalk((pagetable_t)child);
+      }
+    }
+  }
+  kfree((void *)pagetable);
 }
-
