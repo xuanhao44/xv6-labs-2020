@@ -560,9 +560,11 @@ void ukfreewalk(pagetable_t pagetable)
     {
       uint64 child = PTE2PA(pte);
       ukfreewalk((pagetable_t)child);
-      pagetable[i] = 0;
     }
     // leaf: do nothing
+
+    // no matter leaf or not
+    pagetable[i] = 0;
   }
   kfree((void *)pagetable);
 }
