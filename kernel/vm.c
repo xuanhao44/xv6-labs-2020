@@ -231,6 +231,10 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   if (newsz < oldsz)
     return oldsz;
 
+  // 防止 user virtual address 超过 PLIC
+  if (PGROUNDUP(newsz) > PLIC)
+    return 0;
+
   oldsz = PGROUNDUP(oldsz);
   for (a = oldsz; a < newsz; a += PGSIZE)
   {
@@ -518,7 +522,7 @@ int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
   uint flags;
 
   // 防止 user virtual address 超过 PLIC
-  if (newsz > PLIC)
+  if (PGROUNDUP(newsz) > PLIC)
     return -1;
 
   if (newsz < oldsz)
@@ -536,6 +540,7 @@ int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
     flags = PTE_FLAGS(*pte) & (~PTE_U);
     if (mappages(new, i, PGSIZE, (uint64)pa, flags) != 0)
     {
+      // 注意 dofree 参数设置为 0, 我们只清理映射, 不清理物理内存
       uvmunmap(new, 0, i / PGSIZE, 0);
       return -1;
     }
@@ -544,10 +549,10 @@ int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
   return 0;
 }
 
-int ukvmdealloc(pagetable_t k_pagetable, uint64 oldsz, uint64 newsz)
+uint64 ukvmdealloc(pagetable_t k_pagetable, uint64 oldsz, uint64 newsz)
 {
   if (newsz >= oldsz)
-    return -1;
+    return oldsz;
 
   if (PGROUNDUP(newsz) < PGROUNDUP(oldsz))
   {
@@ -555,5 +560,5 @@ int ukvmdealloc(pagetable_t k_pagetable, uint64 oldsz, uint64 newsz)
     uvmunmap(k_pagetable, PGROUNDUP(newsz), npages, 0);
   }
 
-  return 0;
+  return newsz;
 }

@@ -52,9 +52,6 @@ int exec(char *path, char **argv)
     uint64 sz1;
     if ((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
       goto bad;
-    // 防止 user virtual address 超过 PLIC
-    if (sz1 >= PLIC)
-      goto bad;
     sz = sz1;
     if (ph.vaddr % PGSIZE != 0)
       goto bad;
@@ -78,8 +75,6 @@ int exec(char *path, char **argv)
   uvmclear(pagetable, sz - 2 * PGSIZE);
   sp = sz;
   stackbase = sp - PGSIZE;
-
-  ukvmcopy(pagetable, p->k_pagetable, 0, sz);
 
   // Push argument strings, prepare rest of stack in ustack.
   for (argc = 0; argv[argc]; argc++)
@@ -118,6 +113,11 @@ int exec(char *path, char **argv)
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
+  // 处理旧的进程内核页表
+  ukvmdealloc(p->k_pagetable, p->sz, 0);
+  // 复制出新的进程内核页表
+  if (ukvmcopy(p->pagetable, p->k_pagetable, 0, sz) < 0)
+    goto bad;
   p->sz = sz;
   p->trapframe->epc = elf.entry; // initial program counter = main
   p->trapframe->sp = sp;         // initial stack pointer

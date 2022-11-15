@@ -287,9 +287,7 @@ int growproc(int n)
   else if (n < 0)
   {
     sz = uvmdealloc(p->pagetable, sz, sz + n);
-
-    if (ukvmdealloc(p->k_pagetable, p->sz, p->sz + n) != 0)
-      return -1;
+    ukvmdealloc(p->k_pagetable, p->sz, p->sz + n);
   }
   p->sz = sz;
   return 0;
@@ -317,6 +315,7 @@ int fork(void)
     return -1;
   }
   np->sz = p->sz;
+  ukvmcopy(np->pagetable, np->k_pagetable, 0, np->sz);
 
   np->parent = p;
 
@@ -331,8 +330,6 @@ int fork(void)
     if (p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
-
-  ukvmcopy(np->pagetable, np->k_pagetable, 0, np->sz);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
