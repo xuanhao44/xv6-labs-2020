@@ -184,6 +184,7 @@ void            ukvminithart(pagetable_t);
 void            ukvmmap(pagetable_t, uint64, uint64, uint64, int);
 void            ukfreewalk(pagetable_t);
 int             ukvmcopy(pagetable_t, pagetable_t, uint64, uint64);
+int             ukvmdealloc(pagetable_t, uint64, uint64);
 
 // plic.c
 void            plicinit(void);

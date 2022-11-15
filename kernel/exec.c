@@ -79,7 +79,7 @@ int exec(char *path, char **argv)
   sp = sz;
   stackbase = sp - PGSIZE;
 
-  ukvmcopy(p->pagetable, p->k_pagetable, 0, sz);
+  ukvmcopy(pagetable, p->k_pagetable, 0, sz);
 
   // Push argument strings, prepare rest of stack in ustack.
   for (argc = 0; argv[argc]; argc++)

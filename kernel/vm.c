@@ -543,3 +543,17 @@ int ukvmcopy(pagetable_t old, pagetable_t new, uint64 oldsz, uint64 newsz)
 
   return 0;
 }
+
+int ukvmdealloc(pagetable_t k_pagetable, uint64 oldsz, uint64 newsz)
+{
+  if (newsz >= oldsz)
+    return -1;
+
+  if (PGROUNDUP(newsz) < PGROUNDUP(oldsz))
+  {
+    int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+    uvmunmap(k_pagetable, PGROUNDUP(newsz), npages, 0);
+  }
+
+  return 0;
+}
