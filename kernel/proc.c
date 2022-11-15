@@ -254,6 +254,8 @@ void userinit(void)
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
+  ukvmcopy(p->pagetable, p->k_pagetable, 0, p->sz);
+
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;     // user program counter
   p->trapframe->sp = PGSIZE; // user stack pointer
@@ -280,6 +282,7 @@ int growproc(int n)
     {
       return -1;
     }
+    ukvmcopy(p->pagetable, p->k_pagetable, p->sz, sz);
   }
   else if (n < 0)
   {
@@ -325,6 +328,8 @@ int fork(void)
     if (p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
+  ukvmcopy(np->pagetable, np->k_pagetable, 0, np->sz);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 

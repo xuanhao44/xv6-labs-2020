@@ -52,6 +52,9 @@ int exec(char *path, char **argv)
     uint64 sz1;
     if ((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
       goto bad;
+    // 防止 user virtual address 超过 PLIC
+    if (sz1 >= PLIC)
+      goto bad;
     sz = sz1;
     if (ph.vaddr % PGSIZE != 0)
       goto bad;
@@ -75,6 +78,8 @@ int exec(char *path, char **argv)
   uvmclear(pagetable, sz - 2 * PGSIZE);
   sp = sz;
   stackbase = sp - PGSIZE;
+
+  ukvmcopy(p->pagetable, p->k_pagetable, 0, sz);
 
   // Push argument strings, prepare rest of stack in ustack.
   for (argc = 0; argv[argc]; argc++)

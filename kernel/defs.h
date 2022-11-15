@@ -183,6 +183,7 @@ pagetable_t     ukvminit();
 void            ukvminithart(pagetable_t);
 void            ukvmmap(pagetable_t, uint64, uint64, uint64, int);
 void            ukfreewalk(pagetable_t);
+int             ukvmcopy(pagetable_t, pagetable_t, uint64, uint64);
 
 // plic.c
 void            plicinit(void);
@@ -228,3 +229,7 @@ int             sockread(struct sock *, uint64, int);
 int             sockwrite(struct sock *, uint64, int);
 void            sockrecvudp(struct mbuf*, uint32, uint16, uint16);
 #endif
+
+// vmcopyin.c
+int             copyin_new(pagetable_t, char *, uint64, uint64);
+int             copyinstr_new(pagetable_t, char *, uint64, uint64);
